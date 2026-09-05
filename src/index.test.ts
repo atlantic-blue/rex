@@ -1,3 +1,6 @@
+import { fileURLToPath } from "node:url";
+
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 import { ParseError, match, parse } from "./index.js";
@@ -61,5 +64,38 @@ describe("a pattern that ends on a backslash", () => {
       expect(thrown).toBeInstanceOf(ParseError);
       expect((thrown as ParseError).index).toBe(3);
     }
+  });
+});
+
+describe("the entry point", () => {
+  const exportsOf = (name: string): readonly string[] => {
+    const file = fileURLToPath(new URL(name, import.meta.url));
+    const program = ts.createProgram([file], {
+      module: ts.ModuleKind.NodeNext,
+      moduleResolution: ts.ModuleResolutionKind.NodeNext,
+      target: ts.ScriptTarget.ES2023,
+      noEmit: true,
+    });
+
+    const source = program.getSourceFile(file);
+    if (source === undefined) {
+      throw new Error(`${name} did not compile`);
+    }
+
+    const checker = program.getTypeChecker();
+    const symbol = checker.getSymbolAtLocation(source);
+    if (symbol === undefined) {
+      throw new Error(`${name} exports nothing`);
+    }
+
+    return checker.getExportsOfModule(symbol).map((each) => each.getName());
+  };
+
+  it("re-exports every type that the node module exports", () => {
+    const fromNode = exportsOf("./node.ts");
+    const fromIndex = new Set(exportsOf("./index.ts"));
+
+    expect(fromNode.length).toBeGreaterThan(0);
+    expect(fromNode.filter((name) => !fromIndex.has(name))).toEqual([]);
   });
 });
