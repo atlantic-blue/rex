@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { Node } from "./node.js";
+import type { CharClass, Node } from "./node.js";
 
 function render(node: Node): string {
   switch (node.kind) {
@@ -8,6 +8,12 @@ function render(node: Node): string {
       return node.char;
     case "anyChar":
       return ".";
+    case "charClass": {
+      const body = node.ranges
+        .map((range) => (range.from === range.to ? range.from : `${range.from}-${range.to}`))
+        .join("");
+      return `[${node.negated ? "^" : ""}${body}]`;
+    }
     case "sequence":
       return node.items.map(render).join("");
   }
@@ -40,5 +46,64 @@ describe("the node shapes", () => {
     const tree: Node = { kind: "sequence", items: [] };
 
     expect(render(tree)).toBe("");
+  });
+});
+
+describe("the character class shape", () => {
+  it("carries a range as a from and a to", () => {
+    const node: CharClass = {
+      kind: "charClass",
+      ranges: [{ from: "a", to: "z" }],
+      negated: false,
+    };
+
+    expect(render(node)).toBe("[a-z]");
+  });
+
+  it("carries a single character as a range whose from and to are equal", () => {
+    const node: CharClass = {
+      kind: "charClass",
+      ranges: [{ from: "a", to: "a" }],
+      negated: false,
+    };
+
+    expect(node.ranges).toEqual([{ from: "a", to: "a" }]);
+    expect(render(node)).toBe("[a]");
+  });
+
+  it("carries negation as a boolean", () => {
+    const node: CharClass = {
+      kind: "charClass",
+      ranges: [{ from: "a", to: "a" }],
+      negated: true,
+    };
+
+    expect(node.negated).toBe(true);
+    expect(render(node)).toBe("[^a]");
+  });
+
+  it("holds single characters and ranges together", () => {
+    const node: CharClass = {
+      kind: "charClass",
+      ranges: [
+        { from: "a", to: "c" },
+        { from: "x", to: "x" },
+      ],
+      negated: false,
+    };
+
+    expect(render(node)).toBe("[a-cx]");
+  });
+
+  it("stands beside the other kinds in a sequence", () => {
+    const tree: Node = {
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "charClass", ranges: [{ from: "0", to: "9" }], negated: false },
+      ],
+    };
+
+    expect(render(tree)).toBe("a[0-9]");
   });
 });
