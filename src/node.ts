@@ -30,4 +30,27 @@ export interface Repeat {
   readonly most: number | "many";
 }
 
-export type Node = Literal | AnyChar | CharClass | Sequence | Repeat;
+export interface Alternate {
+  readonly kind: "alternate";
+  readonly options: readonly Node[];
+}
+
+export interface Group {
+  readonly kind: "group";
+  readonly item: Node;
+}
+
+export interface Anchor {
+  readonly kind: "anchor";
+  readonly at: "start" | "end";
+}
+
+export type Node =
+  | Literal
+  | AnyChar
+  | CharClass
+  | Sequence
+  | Repeat
+  | Alternate
+  | Group
+  | Anchor;

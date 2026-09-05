@@ -1,4 +1,4 @@
-import type { CharClass, CharRange, Node, Repeat } from "./node.js";
+import type { CharClass, CharRange, Group, Node, Repeat, Sequence } from "./node.js";
 
 export class ParseError extends Error {
   readonly index: number;
@@ -13,14 +13,16 @@ export class ParseError extends Error {
 const unclosedClass = "a character class needs a closing bracket";
 const nothingToRepeat = "a quantifier needs an item before it";
 const stackedQuantifier = "a quantifier cannot follow another quantifier";
+const unclosedGroup = "a group needs a closing parenthesis";
+const unopenedGroup = "a closing parenthesis has no group to close";
 
 interface ReadChar {
   readonly char: string;
   readonly next: number;
 }
 
-interface ReadClass {
-  readonly node: CharClass;
+interface Read<Shape extends Node> {
+  readonly node: Shape;
   readonly next: number;
 }
 
@@ -35,6 +37,11 @@ const quantifiers = new Map<string, Bounds>([
   ["?", { least: 0, most: 1 }],
 ]);
 
+const anchors = new Map<string, "start" | "end">([
+  ["^", "start"],
+  ["$", "end"],
+]);
+
 function readClassChar(pattern: string, at: number, open: number): ReadChar {
   if (pattern.charAt(at) === "\\") {
     const escaped = at + 1;
@@ -46,7 +53,7 @@ function readClassChar(pattern: string, at: number, open: number): ReadChar {
   return { char: pattern.charAt(at), next: at + 1 };
 }
 
-function readClass(pattern: string, open: number): ReadClass {
+function readClass(pattern: string, open: number): Read<CharClass> {
   let at = open + 1;
   let negated = false;
 
@@ -97,12 +104,26 @@ function repeatLast(items: Node[], bounds: Bounds, at: number): Repeat {
   return { kind: "repeat", item, least: bounds.least, most: bounds.most };
 }
 
-export function parse(pattern: string): Node {
+function readGroup(pattern: string, open: number): Read<Group> {
+  const read = readAlternation(pattern, open + 1);
+
+  if (pattern.charAt(read.next) !== ")") {
+    throw new ParseError(unclosedGroup, open);
+  }
+
+  return { node: { kind: "group", item: read.node }, next: read.next + 1 };
+}
+
+function readSequence(pattern: string, from: number): Read<Sequence> {
   const items: Node[] = [];
-  let at = 0;
+  let at = from;
 
   while (at < pattern.length) {
     const char = pattern.charAt(at);
+
+    if (char === "|" || char === ")") {
+      break;
+    }
 
     if (char === "\\") {
       const escaped = at + 1;
@@ -121,9 +142,23 @@ export function parse(pattern: string): Node {
       continue;
     }
 
+    if (char === "(") {
+      const read = readGroup(pattern, at);
+      items.push(read.node);
+      at = read.next;
+      continue;
+    }
+
     const bounds = quantifiers.get(char);
     if (bounds !== undefined) {
       items.push(repeatLast(items, bounds, at));
+      at += 1;
+      continue;
+    }
+
+    const anchor = anchors.get(char);
+    if (anchor !== undefined) {
+      items.push({ kind: "anchor", at: anchor });
       at += 1;
       continue;
     }
@@ -138,5 +173,40 @@ export function parse(pattern: string): Node {
     at += 1;
   }
 
-  return { kind: "sequence", items };
+  return { node: { kind: "sequence", items }, next: at };
+}
+
+function readAlternation(pattern: string, from: number): Read<Node> {
+  const options: Node[] = [];
+  let at = from;
+
+  for (;;) {
+    const read = readSequence(pattern, at);
+    options.push(read.node);
+    at = read.next;
+
+    if (pattern.charAt(at) !== "|") {
+      break;
+    }
+
+    at += 1;
+  }
+
+  const only = options[0];
+
+  if (options.length === 1 && only !== undefined) {
+    return { node: only, next: at };
+  }
+
+  return { node: { kind: "alternate", options }, next: at };
+}
+
+export function parse(pattern: string): Node {
+  const read = readAlternation(pattern, 0);
+
+  if (read.next < pattern.length) {
+    throw new ParseError(unopenedGroup, read.next);
+  }
+
+  return read.node;
 }

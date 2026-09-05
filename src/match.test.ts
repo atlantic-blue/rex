@@ -343,3 +343,215 @@ describe("a quantifier parsed from a pattern", () => {
     expect(matches("a\\*", "aaa")).toBe(false);
   });
 });
+
+describe("matchNode against a group", () => {
+  it("takes what the item takes", () => {
+    const node: Node = { kind: "group", item: abc };
+
+    expect(matchNode(node, "abc", 0)).toBe(3);
+  });
+
+  it("answers nothing when the item does not match", () => {
+    const node: Node = { kind: "group", item: abc };
+
+    expect(matchNode(node, "abd", 0)).toBeUndefined();
+  });
+
+  it("takes nothing when the item takes nothing", () => {
+    const node: Node = { kind: "group", item: { kind: "sequence", items: [] } };
+
+    expect(matchNode(node, "abc", 1)).toBe(1);
+  });
+});
+
+describe("matchNode against an alternate", () => {
+  const aOrB: Node = {
+    kind: "alternate",
+    options: [
+      { kind: "literal", char: "a" },
+      { kind: "literal", char: "b" },
+    ],
+  };
+
+  it("takes the first option when it matches", () => {
+    expect(matchNode(aOrB, "abc", 0)).toBe(1);
+  });
+
+  it("takes a later option when the earlier one does not match", () => {
+    expect(matchNode(aOrB, "bc", 0)).toBe(1);
+  });
+
+  it("takes the first option that matches, not the longest one", () => {
+    const shortFirst: Node = {
+      kind: "alternate",
+      options: [
+        { kind: "literal", char: "a" },
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "a" },
+            { kind: "literal", char: "b" },
+          ],
+        },
+      ],
+    };
+
+    expect(matchNode(shortFirst, "ab", 0)).toBe(1);
+  });
+
+  it("answers nothing when no option matches", () => {
+    expect(matchNode(aOrB, "c", 0)).toBeUndefined();
+  });
+
+  it("answers nothing for no options at all", () => {
+    expect(matchNode({ kind: "alternate", options: [] }, "a", 0)).toBeUndefined();
+  });
+});
+
+describe("matchNode against an anchor", () => {
+  it("takes nothing at the start of the input for a start anchor", () => {
+    expect(matchNode({ kind: "anchor", at: "start" }, "abc", 0)).toBe(0);
+  });
+
+  it("answers nothing away from the start for a start anchor", () => {
+    expect(matchNode({ kind: "anchor", at: "start" }, "abc", 1)).toBeUndefined();
+  });
+
+  it("takes nothing at the end of the input for an end anchor", () => {
+    expect(matchNode({ kind: "anchor", at: "end" }, "abc", 3)).toBe(3);
+  });
+
+  it("answers nothing away from the end for an end anchor", () => {
+    expect(matchNode({ kind: "anchor", at: "end" }, "abc", 2)).toBeUndefined();
+  });
+
+  it("holds both anchors at once against an empty input", () => {
+    expect(matchNode({ kind: "anchor", at: "start" }, "", 0)).toBe(0);
+    expect(matchNode({ kind: "anchor", at: "end" }, "", 0)).toBe(0);
+  });
+});
+
+describe("a group parsed from a pattern", () => {
+  function matches(pattern: string, input: string): boolean {
+    return matchTree(parse(pattern), input);
+  }
+
+  it("repeats the whole pair under a quantifier", () => {
+    expect(matches("(ab)+", "abab")).toBe(true);
+    expect(matches("(ab)+", "ab")).toBe(true);
+    expect(matches("(ab)+", "aba")).toBe(true);
+    expect(matches("(ab)+", "ba")).toBe(false);
+  });
+
+  it("needs one whole pair for a plus", () => {
+    expect(matches("^(ab)+$", "abab")).toBe(true);
+    expect(matches("^(ab)+$", "aba")).toBe(false);
+    expect(matches("^(ab)+$", "")).toBe(false);
+  });
+
+  it("takes no pair at all under a star", () => {
+    expect(matches("^(ab)*$", "")).toBe(true);
+    expect(matches("^(ab)*$", "abab")).toBe(true);
+  });
+
+  it("groups without changing what a plain pattern matches", () => {
+    expect(matches("(abc)", "abc")).toBe(true);
+    expect(matches("(a)(b)", "ab")).toBe(true);
+  });
+
+  it("ends a repeat whose group takes nothing", () => {
+    expect(matches("(a|)*b", "b")).toBe(true);
+    expect(matches("^(a|)*$", "aa")).toBe(true);
+  });
+});
+
+describe("an alternation parsed from a pattern", () => {
+  function matches(pattern: string, input: string): boolean {
+    return matchTree(parse(pattern), input);
+  }
+
+  it("matches either side of the bar", () => {
+    expect(matches("a|b", "a")).toBe(true);
+    expect(matches("a|b", "b")).toBe(true);
+    expect(matches("a|b", "c")).toBe(false);
+  });
+
+  it("binds loosest, so ab|cd is ab or cd", () => {
+    expect(matches("ab|cd", "ab")).toBe(true);
+    expect(matches("ab|cd", "cd")).toBe(true);
+    expect(matches("^(ab|cd)$", "acd")).toBe(false);
+    expect(matches("^(ab|cd)$", "abd")).toBe(false);
+  });
+
+  it("chooses inside a group, so each option carries the rest of the pattern", () => {
+    expect(matches("(a|b)c", "ac")).toBe(true);
+    expect(matches("(a|b)c", "bc")).toBe(true);
+    expect(matches("(a|b)c", "cc")).toBe(false);
+  });
+
+  it("matches the empty string on an empty option", () => {
+    expect(matches("a|", "")).toBe(true);
+    expect(matches("^(a|)$", "")).toBe(true);
+    expect(matches("^(a|)$", "a")).toBe(true);
+  });
+
+  it("takes a later option when the first one leaves the rest unmatched", () => {
+    expect(matches("^(a|ab)c$", "abc")).toBe(true);
+    expect(matches("^(ab|a)c$", "ac")).toBe(true);
+  });
+
+  it("reads three options", () => {
+    expect(matches("^(cat|dog|fish)$", "dog")).toBe(true);
+    expect(matches("^(cat|dog|fish)$", "fish")).toBe(true);
+    expect(matches("^(cat|dog|fish)$", "bird")).toBe(false);
+  });
+
+  it("repeats a whole alternation under a quantifier", () => {
+    expect(matches("^(a|b)+$", "abba")).toBe(true);
+    expect(matches("^(a|b)+$", "abca")).toBe(false);
+  });
+});
+
+describe("an anchor parsed from a pattern", () => {
+  function matches(pattern: string, input: string): boolean {
+    return matchTree(parse(pattern), input);
+  }
+
+  it("binds the match to both ends of the input", () => {
+    expect(matches("^abc$", "abc")).toBe(true);
+    expect(matches("^abc$", "xabc")).toBe(false);
+    expect(matches("^abc$", "abcx")).toBe(false);
+  });
+
+  it("binds the start and leaves the end free", () => {
+    expect(matches("^abc", "abcd")).toBe(true);
+    expect(matches("^abc", "xabc")).toBe(false);
+  });
+
+  it("binds the end and leaves the start free", () => {
+    expect(matches("abc$", "xabc")).toBe(true);
+    expect(matches("abc$", "abcx")).toBe(false);
+  });
+
+  it("matches an empty input on both anchors together", () => {
+    expect(matches("^$", "")).toBe(true);
+    expect(matches("^$", "a")).toBe(false);
+  });
+
+  it("holds a quantifier between the anchors", () => {
+    expect(matches("^a*$", "aaa")).toBe(true);
+    expect(matches("^a*$", "")).toBe(true);
+    expect(matches("^a*$", "aab")).toBe(false);
+  });
+
+  it("anchors each option of an alternation on its own", () => {
+    expect(matches("^a|b$", "axx")).toBe(true);
+    expect(matches("^a|b$", "xxb")).toBe(true);
+    expect(matches("^a|b$", "xax")).toBe(false);
+  });
+
+  it("reads an escaped caret and an escaped dollar as literals", () => {
+    expect(matches("\\^a", "^a")).toBe(true);
+    expect(matches("a\\$", "a$")).toBe(true);
+  });
+});
