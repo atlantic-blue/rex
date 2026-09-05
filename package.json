@@ -17,10 +17,11 @@
     "dist"
   ],
   "scripts": {
-    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json && tsc --noEmit --project bench/tsconfig.json",
     "lint": "eslint .",
     "test": "vitest run",
     "build": "tsc --project tsconfig.build.json",
+    "bench": "npm run build && node --experimental-strip-types bench/bench.ts",
     "prepack": "npm run build",
     "check:packed": "node --experimental-strip-types scripts/packed-install-check.ts"
   },
