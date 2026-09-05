@@ -42,6 +42,12 @@ export function matchFrom(node: Node, input: string, at: number, rest: Rest): bo
       return matchItems(node.items, 0, input, at, rest);
     case "repeat":
       return matchRepeat(node, 0, input, at, rest);
+    case "alternate":
+      return node.options.some((option) => matchFrom(option, input, at, rest));
+    case "group":
+      return matchFrom(node.item, input, at, rest);
+    case "anchor":
+      return node.at === "start" ? at === 0 && rest(at) : at === input.length && rest(at);
   }
 }
 
@@ -63,7 +69,11 @@ function matchItems(
 
 function matchRepeat(node: Repeat, taken: number, input: string, at: number, rest: Rest): boolean {
   const room = node.most === "many" || taken < node.most;
-  const another = (next: number): boolean => matchRepeat(node, taken + 1, input, next, rest);
+
+  // A group can match nothing, as `(a|)` does, and a round that takes no character would
+  // repeat for ever. Such a round counts once, then the repeat ends.
+  const another = (next: number): boolean =>
+    next === at ? rest(next) : matchRepeat(node, taken + 1, input, next, rest);
 
   if (room && matchFrom(node.item, input, at, another)) {
     return true;

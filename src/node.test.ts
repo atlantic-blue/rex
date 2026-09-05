@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import type { CharClass, Node, Repeat } from "./node.js";
+import type { Alternate, Anchor, CharClass, Group, Node, Repeat } from "./node.js";
 
 function mark(node: Repeat): string {
   if (node.least === 0 && node.most === "many") {
@@ -31,6 +31,12 @@ function render(node: Node): string {
       return node.items.map(render).join("");
     case "repeat":
       return `${render(node.item)}${mark(node)}`;
+    case "alternate":
+      return node.options.map(render).join("|");
+    case "group":
+      return `(${render(node.item)})`;
+    case "anchor":
+      return node.at === "start" ? "^" : "$";
   }
 }
 
@@ -206,5 +212,144 @@ describe("the repeat shape", () => {
     };
 
     expect(render(tree)).toBe(".*");
+  });
+});
+
+describe("the group shape", () => {
+  it("carries the item it groups", () => {
+    const node: Group = {
+      kind: "group",
+      item: { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+    };
+
+    expect(node.item).toEqual({ kind: "sequence", items: [{ kind: "literal", char: "a" }] });
+    expect(render(node)).toBe("(a)");
+  });
+
+  it("carries no name and no capture number", () => {
+    const node: Group = { kind: "group", item: { kind: "literal", char: "a" } };
+
+    expect(Object.keys(node).sort()).toEqual(["item", "kind"]);
+  });
+
+  it("stands as the item of a repeat, so a quantifier repeats the pair", () => {
+    const node: Node = {
+      kind: "repeat",
+      item: {
+        kind: "group",
+        item: {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "a" },
+            { kind: "literal", char: "b" },
+          ],
+        },
+      },
+      least: 1,
+      most: "many",
+    };
+
+    expect(render(node)).toBe("(ab)+");
+  });
+
+  it("holds a group inside a group", () => {
+    const node: Group = {
+      kind: "group",
+      item: { kind: "group", item: { kind: "literal", char: "a" } },
+    };
+
+    expect(render(node)).toBe("((a))");
+  });
+});
+
+describe("the alternate shape", () => {
+  it("carries its options in order", () => {
+    const node: Alternate = {
+      kind: "alternate",
+      options: [
+        { kind: "literal", char: "a" },
+        { kind: "literal", char: "b" },
+      ],
+    };
+
+    expect(node.options).toHaveLength(2);
+    expect(render(node)).toBe("a|b");
+  });
+
+  it("carries a sequence as an option, so the bar binds loosest", () => {
+    const node: Alternate = {
+      kind: "alternate",
+      options: [
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "a" },
+            { kind: "literal", char: "b" },
+          ],
+        },
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "c" },
+            { kind: "literal", char: "d" },
+          ],
+        },
+      ],
+    };
+
+    expect(render(node)).toBe("ab|cd");
+  });
+
+  it("carries an empty option", () => {
+    const node: Alternate = {
+      kind: "alternate",
+      options: [{ kind: "literal", char: "a" }, { kind: "sequence", items: [] }],
+    };
+
+    expect(render(node)).toBe("a|");
+  });
+
+  it("stands inside a group", () => {
+    const node: Node = {
+      kind: "group",
+      item: {
+        kind: "alternate",
+        options: [
+          { kind: "literal", char: "a" },
+          { kind: "literal", char: "b" },
+        ],
+      },
+    };
+
+    expect(render(node)).toBe("(a|b)");
+  });
+});
+
+describe("the anchor shape", () => {
+  it("carries start", () => {
+    const node: Anchor = { kind: "anchor", at: "start" };
+
+    expect(node.at).toBe("start");
+    expect(render(node)).toBe("^");
+  });
+
+  it("carries end", () => {
+    const node: Anchor = { kind: "anchor", at: "end" };
+
+    expect(node.at).toBe("end");
+    expect(render(node)).toBe("$");
+  });
+
+  it("stands at both ends of a sequence", () => {
+    const tree: Node = {
+      kind: "sequence",
+      items: [
+        { kind: "anchor", at: "start" },
+        { kind: "literal", char: "a" },
+        { kind: "anchor", at: "end" },
+      ],
+    };
+
+    expect(render(tree)).toBe("^a$");
   });
 });

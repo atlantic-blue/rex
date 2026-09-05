@@ -523,3 +523,342 @@ describe("a quantifier after another quantifier", () => {
     });
   });
 });
+
+describe("a group", () => {
+  it("reads a parenthesised pattern as a group holding a sequence", () => {
+    expect(parse("(ab)")).toEqual({
+      kind: "sequence",
+      items: [
+        {
+          kind: "group",
+          item: {
+            kind: "sequence",
+            items: [
+              { kind: "literal", char: "a" },
+              { kind: "literal", char: "b" },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("gives a quantifier after it the whole group as its item", () => {
+    expect(parse("(ab)+")).toEqual({
+      kind: "sequence",
+      items: [
+        {
+          kind: "repeat",
+          item: {
+            kind: "group",
+            item: {
+              kind: "sequence",
+              items: [
+                { kind: "literal", char: "a" },
+                { kind: "literal", char: "b" },
+              ],
+            },
+          },
+          least: 1,
+          most: "many",
+        },
+      ],
+    });
+  });
+
+  it("reads an empty group", () => {
+    expect(parse("()")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "group", item: { kind: "sequence", items: [] } }],
+    });
+  });
+
+  it("reads a group inside a group", () => {
+    expect(parse("((a))")).toEqual({
+      kind: "sequence",
+      items: [
+        {
+          kind: "group",
+          item: {
+            kind: "sequence",
+            items: [
+              {
+                kind: "group",
+                item: { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+              },
+            ],
+          },
+        },
+      ],
+    });
+  });
+
+  it("reads an escaped parenthesis as a literal", () => {
+    expect(parse("\\(")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "literal", char: "(" }],
+    });
+  });
+
+  it("holds an alternation, so the bar inside stays inside", () => {
+    expect(parse("(a|b)c")).toEqual({
+      kind: "sequence",
+      items: [
+        {
+          kind: "group",
+          item: {
+            kind: "alternate",
+            options: [
+              { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+              { kind: "sequence", items: [{ kind: "literal", char: "b" }] },
+            ],
+          },
+        },
+        { kind: "literal", char: "c" },
+      ],
+    });
+  });
+});
+
+describe("a group with no closing parenthesis", () => {
+  it("throws a ParseError", () => {
+    expect(() => parse("(ab")).toThrow(ParseError);
+  });
+
+  it("puts the index at the opening parenthesis", () => {
+    expect.assertions(3);
+    try {
+      parse("(ab");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(ParseError);
+      const error = thrown as ParseError;
+      expect(error.index).toBe(0);
+      expect(error.message).toBe("a group needs a closing parenthesis");
+    }
+  });
+
+  it("puts the index at the opening parenthesis further into the pattern", () => {
+    expect.assertions(1);
+    try {
+      parse("ab(cd");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(2);
+    }
+  });
+
+  it("puts the index at the outer parenthesis when the outer group is the unclosed one", () => {
+    expect.assertions(1);
+    try {
+      parse("(a(b)");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(0);
+    }
+  });
+
+  it("does not close on an escaped parenthesis", () => {
+    expect.assertions(1);
+    try {
+      parse("(a\\)");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(0);
+    }
+  });
+
+  it("throws when a closing parenthesis has no group to close", () => {
+    expect.assertions(2);
+    try {
+      parse("ab)c");
+    } catch (thrown) {
+      const error = thrown as ParseError;
+      expect(error.index).toBe(2);
+      expect(error.message).toBe("a closing parenthesis has no group to close");
+    }
+  });
+
+  it("throws when a quantifier opens a group", () => {
+    expect.assertions(2);
+    try {
+      parse("(*)");
+    } catch (thrown) {
+      const error = thrown as ParseError;
+      expect(error.index).toBe(1);
+      expect(error.message).toBe("a quantifier needs an item before it");
+    }
+  });
+});
+
+describe("an alternation", () => {
+  it("reads the bar as a choice between two sequences", () => {
+    expect(parse("a|b")).toEqual({
+      kind: "alternate",
+      options: [
+        { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+        { kind: "sequence", items: [{ kind: "literal", char: "b" }] },
+      ],
+    });
+  });
+
+  it("binds loosest, so ab|cd is ab or cd", () => {
+    expect(parse("ab|cd")).toEqual({
+      kind: "alternate",
+      options: [
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "a" },
+            { kind: "literal", char: "b" },
+          ],
+        },
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "c" },
+            { kind: "literal", char: "d" },
+          ],
+        },
+      ],
+    });
+  });
+
+  it("reads three options in order", () => {
+    expect(parse("a|b|c")).toEqual({
+      kind: "alternate",
+      options: [
+        { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+        { kind: "sequence", items: [{ kind: "literal", char: "b" }] },
+        { kind: "sequence", items: [{ kind: "literal", char: "c" }] },
+      ],
+    });
+  });
+
+  it("allows an empty option after the bar", () => {
+    expect(parse("a|")).toEqual({
+      kind: "alternate",
+      options: [
+        { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+        { kind: "sequence", items: [] },
+      ],
+    });
+  });
+
+  it("allows an empty option before the bar", () => {
+    expect(parse("|a")).toEqual({
+      kind: "alternate",
+      options: [
+        { kind: "sequence", items: [] },
+        { kind: "sequence", items: [{ kind: "literal", char: "a" }] },
+      ],
+    });
+  });
+
+  it("gives a quantifier only the item before it, not the whole option", () => {
+    expect(parse("ab*|c")).toEqual({
+      kind: "alternate",
+      options: [
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "a" },
+            { kind: "repeat", item: { kind: "literal", char: "b" }, least: 0, most: "many" },
+          ],
+        },
+        { kind: "sequence", items: [{ kind: "literal", char: "c" }] },
+      ],
+    });
+  });
+
+  it("reads an escaped bar as a literal", () => {
+    expect(parse("a\\|b")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "literal", char: "|" },
+        { kind: "literal", char: "b" },
+      ],
+    });
+  });
+
+  it("leaves a pattern with no bar as a plain sequence", () => {
+    expect(parse("ab")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "literal", char: "b" },
+      ],
+    });
+  });
+});
+
+describe("an anchor", () => {
+  it("reads the caret as a start anchor", () => {
+    expect(parse("^a")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "anchor", at: "start" },
+        { kind: "literal", char: "a" },
+      ],
+    });
+  });
+
+  it("reads the dollar as an end anchor", () => {
+    expect(parse("a$")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "anchor", at: "end" },
+      ],
+    });
+  });
+
+  it("reads both ends of a pattern", () => {
+    expect(parse("^abc$")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "anchor", at: "start" },
+        { kind: "literal", char: "a" },
+        { kind: "literal", char: "b" },
+        { kind: "literal", char: "c" },
+        { kind: "anchor", at: "end" },
+      ],
+    });
+  });
+
+  it("reads an escaped caret and an escaped dollar as literals", () => {
+    expect(parse("\\^\\$")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "^" },
+        { kind: "literal", char: "$" },
+      ],
+    });
+  });
+
+  it("reads a caret inside a class as negation, not as an anchor", () => {
+    expect(parse("[^a]")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "charClass", ranges: [{ from: "a", to: "a" }], negated: true }],
+    });
+  });
+
+  it("anchors each option of an alternation on its own", () => {
+    expect(parse("^a|b$")).toEqual({
+      kind: "alternate",
+      options: [
+        {
+          kind: "sequence",
+          items: [
+            { kind: "anchor", at: "start" },
+            { kind: "literal", char: "a" },
+          ],
+        },
+        {
+          kind: "sequence",
+          items: [
+            { kind: "literal", char: "b" },
+            { kind: "anchor", at: "end" },
+          ],
+        },
+      ],
+    });
+  });
+});
