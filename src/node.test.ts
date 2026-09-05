@@ -1,6 +1,19 @@
 import { describe, expect, it } from "vitest";
 
-import type { CharClass, Node } from "./node.js";
+import type { CharClass, Node, Repeat } from "./node.js";
+
+function mark(node: Repeat): string {
+  if (node.least === 0 && node.most === "many") {
+    return "*";
+  }
+  if (node.least === 1 && node.most === "many") {
+    return "+";
+  }
+  if (node.least === 0 && node.most === 1) {
+    return "?";
+  }
+  return `{${String(node.least)},${String(node.most)}}`;
+}
 
 function render(node: Node): string {
   switch (node.kind) {
@@ -16,6 +29,8 @@ function render(node: Node): string {
     }
     case "sequence":
       return node.items.map(render).join("");
+    case "repeat":
+      return `${render(node.item)}${mark(node)}`;
   }
 }
 
@@ -105,5 +120,91 @@ describe("the character class shape", () => {
     };
 
     expect(render(tree)).toBe("a[0-9]");
+  });
+});
+
+describe("the repeat shape", () => {
+  it("carries the star as least zero and most many", () => {
+    const node: Repeat = {
+      kind: "repeat",
+      item: { kind: "literal", char: "a" },
+      least: 0,
+      most: "many",
+    };
+
+    expect(node.least).toBe(0);
+    expect(node.most).toBe("many");
+    expect(render(node)).toBe("a*");
+  });
+
+  it("carries the plus as least one and most many", () => {
+    const node: Repeat = {
+      kind: "repeat",
+      item: { kind: "literal", char: "a" },
+      least: 1,
+      most: "many",
+    };
+
+    expect(node.least).toBe(1);
+    expect(node.most).toBe("many");
+    expect(render(node)).toBe("a+");
+  });
+
+  it("carries the question mark as least zero and most one", () => {
+    const node: Repeat = {
+      kind: "repeat",
+      item: { kind: "literal", char: "b" },
+      least: 0,
+      most: 1,
+    };
+
+    expect(node.least).toBe(0);
+    expect(node.most).toBe(1);
+    expect(render(node)).toBe("b?");
+  });
+
+  it("carries a most that is a plain number", () => {
+    const node: Repeat = {
+      kind: "repeat",
+      item: { kind: "literal", char: "a" },
+      least: 2,
+      most: 4,
+    };
+
+    expect(render(node)).toBe("a{2,4}");
+  });
+
+  it("carries any node as the item, so a class repeats", () => {
+    const node: Repeat = {
+      kind: "repeat",
+      item: { kind: "charClass", ranges: [{ from: "a", to: "z" }], negated: false },
+      least: 1,
+      most: "many",
+    };
+
+    expect(render(node)).toBe("[a-z]+");
+  });
+
+  it("stands beside the other kinds in a sequence", () => {
+    const tree: Node = {
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "repeat", item: { kind: "literal", char: "b" }, least: 0, most: "many" },
+      ],
+    };
+
+    expect(render(tree)).toBe("ab*");
+  });
+
+  it("repeats the dot", () => {
+    const tree: Node = {
+      kind: "repeat",
+      item: { kind: "anyChar" },
+      least: 0,
+      most: "many",
+    };
+
+    expect(render(tree)).toBe(".*");
   });
 });
