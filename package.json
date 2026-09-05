@@ -1,16 +1,28 @@
 {
-  "name": "rex",
-  "version": "0.0.0",
-  "private": true,
+  "name": "@atlantic-blue/rex",
+  "version": "0.1.0",
   "description": "A regular expression engine written from scratch in TypeScript.",
   "type": "module",
   "engines": {
     "node": ">=22"
   },
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
   "scripts": {
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc --noEmit --project scripts/tsconfig.json",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build": "tsc --project tsconfig.build.json",
+    "prepack": "npm run build",
+    "check:packed": "node --experimental-strip-types scripts/packed-install-check.ts"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
