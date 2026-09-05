@@ -234,3 +234,112 @@ describe("a class parsed from a pattern", () => {
     expect(matches("[0-9]", "abcdef")).toBe(false);
   });
 });
+
+const aStar: Node = {
+  kind: "repeat",
+  item: { kind: "literal", char: "a" },
+  least: 0,
+  most: "many",
+};
+
+describe("matchNode against a repeat", () => {
+  it("takes every character it can on the first answer", () => {
+    expect(matchNode(aStar, "aaa", 0)).toBe(3);
+  });
+
+  it("takes nothing when the item is not there and least is zero", () => {
+    expect(matchNode(aStar, "bbb", 0)).toBe(0);
+  });
+
+  it("takes nothing at the end of the input", () => {
+    expect(matchNode(aStar, "aaa", 3)).toBe(3);
+  });
+
+  it("answers nothing when least is one and the item is not there", () => {
+    const aPlus: Node = { ...aStar, least: 1 };
+
+    expect(matchNode(aPlus, "bbb", 0)).toBeUndefined();
+  });
+
+  it("stops at most when most is a number", () => {
+    const aOnce: Node = { ...aStar, most: 1 };
+
+    expect(matchNode(aOnce, "aaa", 0)).toBe(1);
+  });
+
+  it("reads the item from the position it is given", () => {
+    expect(matchNode(aStar, "bbaa", 2)).toBe(4);
+  });
+});
+
+describe("a quantifier parsed from a pattern", () => {
+  function matches(pattern: string, input: string): boolean {
+    return matchTree(parse(pattern), input);
+  }
+
+  it("matches the empty string with a star", () => {
+    expect(matches("a*", "")).toBe(true);
+  });
+
+  it("does not match the empty string with a plus", () => {
+    expect(matches("a+", "")).toBe(false);
+  });
+
+  it("needs one item for a plus and takes many", () => {
+    expect(matches("xa+y", "xy")).toBe(false);
+    expect(matches("xa+y", "xay")).toBe(true);
+    expect(matches("xa+y", "xaaay")).toBe(true);
+  });
+
+  it("gives a character back so that a star and a literal share the input", () => {
+    expect(matches("a*a", "aa")).toBe(true);
+    expect(matches("a*a", "a")).toBe(true);
+    expect(matches("a*a", "aaaa")).toBe(true);
+    expect(matches("a*a", "")).toBe(false);
+  });
+
+  it("gives back more than one character when the rest of the pattern needs them", () => {
+    expect(matches("xa*aay", "xaaay")).toBe(true);
+    expect(matches("xa*aay", "xaay")).toBe(true);
+    expect(matches("xa*aay", "xay")).toBe(false);
+  });
+
+  it("takes the item or leaves it out for a question mark", () => {
+    expect(matches("ab?c", "abc")).toBe(true);
+    expect(matches("ab?c", "ac")).toBe(true);
+  });
+
+  it("takes at most one item for a question mark", () => {
+    expect(matches("xab?cy", "xabbcy")).toBe(false);
+  });
+
+  it("applies to one item, so a star after a literal leaves the literal alone", () => {
+    expect(matches("ab*", "a")).toBe(true);
+    expect(matches("ab*", "abbb")).toBe(true);
+    expect(matches("xab*y", "xy")).toBe(false);
+    expect(matches("xab*y", "xay")).toBe(true);
+    expect(matches("xab*y", "xabbby")).toBe(true);
+  });
+
+  it("repeats a character class", () => {
+    expect(matches("[a-z]+", "abc")).toBe(true);
+    expect(matches("x[a-z]+y", "xabcy")).toBe(true);
+    expect(matches("x[a-z]+y", "xy")).toBe(false);
+    expect(matches("x[a-z]+y", "x1y")).toBe(false);
+  });
+
+  it("repeats the dot", () => {
+    expect(matches("x.*y", "xy")).toBe(true);
+    expect(matches("x.*y", "xanythingy")).toBe(true);
+  });
+
+  it("finds a repeat anywhere in the input", () => {
+    expect(matches("a+", "bbaa")).toBe(true);
+    expect(matches("a+", "bbb")).toBe(false);
+  });
+
+  it("matches a literal star when the star is escaped", () => {
+    expect(matches("a\\*", "a*")).toBe(true);
+    expect(matches("a\\*", "aaa")).toBe(false);
+  });
+});

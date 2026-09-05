@@ -346,3 +346,180 @@ describe("a character class with no closing bracket", () => {
     }
   });
 });
+
+describe("a quantifier", () => {
+  it("reads a star as a repeat of least zero and most many", () => {
+    expect(parse("a*")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "repeat", item: { kind: "literal", char: "a" }, least: 0, most: "many" },
+      ],
+    });
+  });
+
+  it("reads a plus as a repeat of least one and most many", () => {
+    expect(parse("a+")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "repeat", item: { kind: "literal", char: "a" }, least: 1, most: "many" },
+      ],
+    });
+  });
+
+  it("reads a question mark as a repeat of least zero and most one", () => {
+    expect(parse("a?")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "repeat", item: { kind: "literal", char: "a" }, least: 0, most: 1 }],
+    });
+  });
+
+  it("applies to the one item before it, not to the whole pattern", () => {
+    expect(parse("ab*")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "repeat", item: { kind: "literal", char: "b" }, least: 0, most: "many" },
+      ],
+    });
+  });
+
+  it("applies to a character class", () => {
+    expect(parse("[a-z]+")).toEqual({
+      kind: "sequence",
+      items: [
+        {
+          kind: "repeat",
+          item: { kind: "charClass", negated: false, ranges: [{ from: "a", to: "z" }] },
+          least: 1,
+          most: "many",
+        },
+      ],
+    });
+  });
+
+  it("applies to the dot", () => {
+    expect(parse(".*")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "repeat", item: { kind: "anyChar" }, least: 0, most: "many" }],
+    });
+  });
+
+  it("applies to an escaped character", () => {
+    expect(parse("\\.+")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "repeat", item: { kind: "literal", char: "." }, least: 1, most: "many" },
+      ],
+    });
+  });
+
+  it("stands among literals on both sides", () => {
+    expect(parse("ab?c")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "repeat", item: { kind: "literal", char: "b" }, least: 0, most: 1 },
+        { kind: "literal", char: "c" },
+      ],
+    });
+  });
+
+  it("reads an escaped star as a literal star", () => {
+    expect(parse("a\\*")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "literal", char: "a" },
+        { kind: "literal", char: "*" },
+      ],
+    });
+  });
+
+  it("reads a star inside a character class as a plain character", () => {
+    expect(parse("[*]")).toEqual({
+      kind: "sequence",
+      items: [{ kind: "charClass", negated: false, ranges: [{ from: "*", to: "*" }] }],
+    });
+  });
+});
+
+describe("a quantifier with no item before it", () => {
+  it("throws a ParseError", () => {
+    expect(() => parse("*")).toThrow(ParseError);
+    expect(() => parse("+a")).toThrow(ParseError);
+    expect(() => parse("?a")).toThrow(ParseError);
+  });
+
+  it("puts the index at a leading star", () => {
+    expect.assertions(3);
+    try {
+      parse("*a");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(ParseError);
+      const error = thrown as ParseError;
+      expect(error.index).toBe(0);
+      expect(error.message).toBe("a quantifier needs an item before it");
+    }
+  });
+
+  it("puts the index at a leading plus", () => {
+    expect.assertions(1);
+    try {
+      parse("+");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(0);
+    }
+  });
+
+  it("puts the index at a leading question mark", () => {
+    expect.assertions(1);
+    try {
+      parse("?");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(0);
+    }
+  });
+});
+
+describe("a quantifier after another quantifier", () => {
+  it("refuses two stars", () => {
+    expect.assertions(3);
+    try {
+      parse("a**");
+    } catch (thrown) {
+      expect(thrown).toBeInstanceOf(ParseError);
+      const error = thrown as ParseError;
+      expect(error.index).toBe(2);
+      expect(error.message).toBe("a quantifier cannot follow another quantifier");
+    }
+  });
+
+  it("refuses a plus after a star", () => {
+    expect(() => parse("a*+")).toThrow(ParseError);
+  });
+
+  it("refuses a question mark after a star, which would be a lazy quantifier", () => {
+    expect(() => parse("a*?")).toThrow(ParseError);
+  });
+
+  it("refuses a star after a plus", () => {
+    expect(() => parse("a+*")).toThrow(ParseError);
+  });
+
+  it("puts the index at the second quantifier further into the pattern", () => {
+    expect.assertions(1);
+    try {
+      parse("ab**");
+    } catch (thrown) {
+      expect((thrown as ParseError).index).toBe(3);
+    }
+  });
+
+  it("takes a quantifier after an escaped star, because the star is a literal", () => {
+    expect(parse("\\**")).toEqual({
+      kind: "sequence",
+      items: [
+        { kind: "repeat", item: { kind: "literal", char: "*" }, least: 0, most: "many" },
+      ],
+    });
+  });
+});

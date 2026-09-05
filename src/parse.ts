@@ -1,4 +1,4 @@
-import type { CharClass, CharRange, Node } from "./node.js";
+import type { CharClass, CharRange, Node, Repeat } from "./node.js";
 
 export class ParseError extends Error {
   readonly index: number;
@@ -11,6 +11,8 @@ export class ParseError extends Error {
 }
 
 const unclosedClass = "a character class needs a closing bracket";
+const nothingToRepeat = "a quantifier needs an item before it";
+const stackedQuantifier = "a quantifier cannot follow another quantifier";
 
 interface ReadChar {
   readonly char: string;
@@ -21,6 +23,17 @@ interface ReadClass {
   readonly node: CharClass;
   readonly next: number;
 }
+
+interface Bounds {
+  readonly least: number;
+  readonly most: number | "many";
+}
+
+const quantifiers = new Map<string, Bounds>([
+  ["*", { least: 0, most: "many" }],
+  ["+", { least: 1, most: "many" }],
+  ["?", { least: 0, most: 1 }],
+]);
 
 function readClassChar(pattern: string, at: number, open: number): ReadChar {
   if (pattern.charAt(at) === "\\") {
@@ -69,6 +82,21 @@ function readClass(pattern: string, open: number): ReadClass {
   throw new ParseError(unclosedClass, open);
 }
 
+function repeatLast(items: Node[], bounds: Bounds, at: number): Repeat {
+  const item = items[items.length - 1];
+
+  if (item === undefined) {
+    throw new ParseError(nothingToRepeat, at);
+  }
+
+  if (item.kind === "repeat") {
+    throw new ParseError(stackedQuantifier, at);
+  }
+
+  items.pop();
+  return { kind: "repeat", item, least: bounds.least, most: bounds.most };
+}
+
 export function parse(pattern: string): Node {
   const items: Node[] = [];
   let at = 0;
@@ -90,6 +118,13 @@ export function parse(pattern: string): Node {
       const read = readClass(pattern, at);
       items.push(read.node);
       at = read.next;
+      continue;
+    }
+
+    const bounds = quantifiers.get(char);
+    if (bounds !== undefined) {
+      items.push(repeatLast(items, bounds, at));
+      at += 1;
       continue;
     }
 

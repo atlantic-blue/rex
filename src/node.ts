@@ -23,4 +23,11 @@ export interface Sequence {
   readonly items: readonly Node[];
 }
 
-export type Node = Literal | AnyChar | CharClass | Sequence;
+export interface Repeat {
+  readonly kind: "repeat";
+  readonly item: Node;
+  readonly least: number;
+  readonly most: number | "many";
+}
+
+export type Node = Literal | AnyChar | CharClass | Sequence | Repeat;
